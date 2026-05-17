@@ -393,13 +393,21 @@ async def query_stream_endpoint(
             metadata_filter=body.metadata_filter,
         )
 
+        # Determine is_valid for the frontend:
+        # - A real answer with citations = valid (even if enforcement had minor issues)
+        # - route == "decline" or "stub" with empty answer = not valid
+        route = result.get("route", "unknown")
+        has_real_answer = bool(answer.strip()) and route not in ("decline", "stub", "blocked")
+        effective_is_valid = has_real_answer or (route == "decline")  # decline is intentional, not an error
+
         yield {
             "event": "done",
             "data": json.dumps(
                 {
                     "session_id": session_id,
-                    "route": result.get("route", "unknown"),
-                    "is_valid": result.get("is_valid", False),
+                    "route": route,
+                    "is_valid": effective_is_valid,
+                    "is_declined": route == "decline",
                     "total_citations": len(citations),
                     "request_id": request_id,
                 }
@@ -473,6 +481,68 @@ async def delete_session(
         raise HTTPException(status_code=404, detail=f"Session '{session_id}' not found")
 
     return {"detail": f"Session '{session_id}' deleted", "session_id": session_id}
+
+
+# --------------------------------------------------------------------------- #
+# GET /available-filings — what data is actually in ChromaDB
+# --------------------------------------------------------------------------- #
+
+
+@router.get("/available-filings")
+async def get_available_filings(request: Request) -> dict:
+    """Return available ticker/form_type/filing_date combinations from ChromaDB.
+
+    Introspects the vector store so the frontend can show only options
+    that have real data — no more phantom period selections.
+
+    Returns:
+        Dict mapping (ticker, form_type) to list of available filing_dates.
+        Example: {"AAPL": {"10-K": ["2025-10-30"], "10-Q": ["2026-01-30", "2026-05-01"]}}
+    """
+    chroma_store = getattr(request.app.state, "chroma_store", None)
+    if chroma_store is None:
+        return {"available": {}, "total_chunks": 0}
+
+    try:
+        # Sample a large number of chunks to get all unique combinations
+        result = chroma_store._collection.get(
+            include=["metadatas"],
+            limit=5000,
+        )
+        metadatas = result.get("metadatas", [])
+
+        # Build available filings map: {ticker: {form_type: set(filing_dates)}}
+        available: dict = {}
+        for meta in metadatas:
+            ticker = meta.get("ticker", "")
+            form_type = meta.get("form_type", "")
+            filing_date = meta.get("filing_date", "")
+            if not ticker or not form_type:
+                continue
+            if ticker not in available:
+                available[ticker] = {}
+            if form_type not in available[ticker]:
+                available[ticker][form_type] = set()
+            if filing_date:
+                available[ticker][form_type].add(filing_date)
+
+        # Convert sets to sorted lists (most recent first)
+        serializable = {
+            ticker: {
+                form_type: sorted(list(dates), reverse=True)
+                for form_type, dates in form_types.items()
+            }
+            for ticker, form_types in available.items()
+        }
+
+        return {
+            "available": serializable,
+            "total_chunks": len(metadatas),
+        }
+
+    except Exception as e:
+        logger.warning("available_filings_error", error=str(e))
+        return {"available": {}, "total_chunks": 0, "error": str(e)}
 
 
 # --------------------------------------------------------------------------- #

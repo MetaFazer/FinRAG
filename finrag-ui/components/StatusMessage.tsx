@@ -9,31 +9,18 @@ export default function StatusMessage({ stage, isLoading }: StatusMessageProps) 
   if (!isLoading || !stage) return null;
 
   return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 8,
-        padding: "8px 0",
-      }}
-    >
-      <span
-        className="pulse-dot"
-        style={{
-          width: 6,
-          height: 6,
-          borderRadius: "50%",
-          background: "var(--accent)",
-          flexShrink: 0,
-          display: "inline-block",
-        }}
-      />
-      <span
-        className="font-mono"
-        style={{ fontSize: "0.75rem", color: "var(--text-secondary)" }}
-      >
+    <div style={{
+      display: "flex",
+      alignItems: "center",
+      gap: 12,
+      marginBottom: 24,
+      paddingBottom: 16,
+      borderBottom: "1px solid var(--border)",
+    }}>
+      <div className="spinner" />
+      <div className="font-mono" style={{ fontSize: "0.8125rem", color: "var(--text-secondary)" }}>
         {stage}
-      </span>
+      </div>
     </div>
   );
 }

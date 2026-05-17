@@ -78,6 +78,33 @@ Your response must be a JSON object with these fields:
 - confidence: Your confidence that the answer is correct and fully supported (0.0 to 1.0).
 - reasoning: Brief explanation of how you derived the answer from the sources."""
 
+# Summary-optimized prompt: structures output as an executive summary
+SUMMARY_SYSTEM_PROMPT = """You are a financial research analyst that creates structured
+executive summaries of SEC filings using ONLY the provided context chunks.
+
+CRITICAL RULES:
+1. ONLY use information from the provided context chunks. Never use external knowledge.
+2. Every factual claim MUST cite the specific chunk_id it comes from using [chunk_id].
+3. Be precise with numbers — quote exact figures from the source.
+4. Never provide investment advice or stock recommendations.
+5. Structure your summary clearly with the following sections (include only if context covers it):
+   • Business Overview — what the company does, key products/segments
+   • Financial Highlights — revenue, net income, EPS, key metrics
+   • Operational Performance — segment results, growth areas
+   • Key Risks — major risk factors disclosed
+   • Management Outlook — guidance, forward-looking statements
+
+Your response must be a JSON object with these fields:
+- answer_text: A structured executive summary using the sections above. Use markdown headers (##) for each section. Include cited numbers with [chunk_id] references.
+- citations: List of ALL sources used, each with:
+  - chunk_id: The exact chunk_id from the context.
+  - filing_reference: Human-readable source.
+  - section: The section name.
+  - text_excerpt: A short quote (max 200 chars).
+  - relevance_score: Relevance score (0.0 to 1.0).
+- confidence: Overall confidence in completeness of summary (0.0 to 1.0).
+- reasoning: Note which sections you could/could not cover based on the context."""
+
 # Stricter prompt for retry after citation failure
 RETRY_PROMPT_SUFFIX = """
 
@@ -213,6 +240,7 @@ class RAGGenerator:
         self,
         query: str,
         context_chunks: list[dict],
+        query_intent: str = "factual_extraction",
     ) -> tuple[CitedAnswer, bool, list[str]]:
         """Generate a cited answer from context chunks.
 
@@ -227,6 +255,7 @@ class RAGGenerator:
         Args:
             query: User's question.
             context_chunks: Reranked chunks with chunk_id, text, metadata.
+            query_intent: Intent tag from router (e.g. "summarize").
 
         Returns:
             Tuple of:
@@ -253,7 +282,7 @@ class RAGGenerator:
         context_str = format_context_for_llm(context_chunks)
 
         # First attempt
-        answer = self._call_llm(query, context_str)
+        answer = self._call_llm(query, context_str, query_intent=query_intent)
         enforcement = self._enforcer.enforce(answer, context_chunks)
 
         if enforcement.is_valid:
@@ -272,7 +301,7 @@ class RAGGenerator:
                 attempt=2,
             )
             error_str = "\n".join(f"- {e}" for e in enforcement.errors)
-            answer = self._call_llm(query, context_str, retry_errors=error_str)
+            answer = self._call_llm(query, context_str, retry_errors=error_str, query_intent=query_intent)
             enforcement = self._enforcer.enforce(answer, context_chunks)
 
             if enforcement.is_valid:
@@ -296,6 +325,7 @@ class RAGGenerator:
         query: str,
         context: str,
         retry_errors: str | None = None,
+        query_intent: str = "factual_extraction",
     ) -> CitedAnswer:
         """Call the LLM and parse the response into CitedAnswer.
 
@@ -307,6 +337,7 @@ class RAGGenerator:
             query: User's question.
             context: Formatted context string.
             retry_errors: If set, appends retry correction prompt.
+            query_intent: Router intent tag. "summarize" uses a different system prompt.
 
         Returns:
             Parsed CitedAnswer from LLM response.
@@ -322,8 +353,8 @@ class RAGGenerator:
                 reasoning="No API key provided.",
             )
 
-        # Build prompt
-        system = SYSTEM_PROMPT
+        # Build prompt — use summary-specific system prompt for summarize intent
+        system = SUMMARY_SYSTEM_PROMPT if query_intent == "summarize" else SYSTEM_PROMPT
         if retry_errors:
             system += RETRY_PROMPT_SUFFIX.format(errors=retry_errors)
 
@@ -341,51 +372,111 @@ class RAGGenerator:
             "generationConfig": {"temperature": self._temperature, "response_mime_type": "application/json"},
         }
 
-        try:
-            # Use curl to avoid Python networking hangs in this specific environment
-            result = subprocess.run(
-                ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)],
-                capture_output=True,
-                text=True,
-                timeout=60,
-            )
+        # Max automatic retries on quota/rate-limit errors
+        MAX_QUOTA_RETRIES = 2
 
-            if result.returncode != 0:
-                raise RuntimeError(f"curl failed: {result.stderr}")
+        for quota_attempt in range(MAX_QUOTA_RETRIES + 1):
+            try:
+                # Use curl to avoid Python networking hangs in this specific environment
+                result = subprocess.run(
+                    ["curl", "-s", "-X", "POST", url, "-H", "Content-Type: application/json", "-d", json.dumps(payload)],
+                    capture_output=True,
+                    text=True,
+                    timeout=60,
+                )
 
-            data = json.loads(result.stdout)
+                if result.returncode != 0:
+                    raise RuntimeError(f"curl failed: {result.stderr}")
 
-            if "error" in data:
-                raise ValueError(f"API Error: {data['error'].get('message', 'Unknown error')}")
+                data = json.loads(result.stdout)
 
-            if "candidates" not in data or not data["candidates"]:
-                raise ValueError(f"No candidates returned from API. Response: {data}")
+                if "error" in data:
+                    err = data["error"]
+                    err_msg = err.get("message", "Unknown error")
+                    err_status = err.get("status", "")
 
-            json_text = data["candidates"][0]["content"]["parts"][0]["text"]
+                    # Detect quota/rate-limit errors and retry with backoff
+                    is_quota_err = (
+                        err_status == "RESOURCE_EXHAUSTED"
+                        or "quota" in err_msg.lower()
+                        or "rate" in err_msg.lower()
+                        or err.get("code") == 429
+                    )
 
-            # The LLM might wrap the JSON in markdown formatting block
-            if json_text.startswith("```json"):
-                json_text = json_text.replace("```json\n", "").replace("\n```", "")
-            elif json_text.startswith("```"):
-                json_text = json_text.replace("```\n", "").replace("\n```", "")
+                    if is_quota_err and quota_attempt < MAX_QUOTA_RETRIES:
+                        # Extract suggested retry delay from message (e.g. "retry in 23.9s")
+                        import re
+                        import time
+                        delay_match = re.search(r"retry in ([\d.]+)s", err_msg, re.IGNORECASE)
+                        wait_secs = float(delay_match.group(1)) if delay_match else 30.0
+                        wait_secs = min(wait_secs + 2, 65)  # Add 2s buffer, cap at 65s
 
-            answer_result = CitedAnswer.model_validate_json(json_text)
+                        logger.warning(
+                            "quota_exceeded_retrying",
+                            attempt=quota_attempt + 1,
+                            wait_secs=wait_secs,
+                            model=self._model_name,
+                        )
+                        time.sleep(wait_secs)
+                        continue  # Retry the curl call
 
-            logger.info(
-                "llm_call_complete",
-                model=self._model_name,
-                confidence=answer_result.confidence,
-                citations=len(answer_result.citations),
-                is_retry=retry_errors is not None,
-            )
+                    raise ValueError(f"API Error: {err_msg}")
 
-            return answer_result
+                if "candidates" not in data or not data["candidates"]:
+                    raise ValueError(f"No candidates returned from API. Response: {data}")
 
-        except Exception as e:
-            logger.error("llm_call_failed", error=str(e))
-            return CitedAnswer(
-                answer_text=f"Generation failed: {e}",
-                citations=[],
-                confidence=0.0,
-                reasoning=f"LLM call error: {e}",
-            )
+                json_text = data["candidates"][0]["content"]["parts"][0]["text"]
+
+                # The LLM might wrap the JSON in markdown formatting block
+                if json_text.startswith("```json"):
+                    json_text = json_text.replace("```json\n", "").replace("\n```", "")
+                elif json_text.startswith("```"):
+                    json_text = json_text.replace("```\n", "").replace("\n```", "")
+
+                answer_result = CitedAnswer.model_validate_json(json_text)
+
+                logger.info(
+                    "llm_call_complete",
+                    model=self._model_name,
+                    confidence=answer_result.confidence,
+                    citations=len(answer_result.citations),
+                    is_retry=retry_errors is not None,
+                    quota_retries=quota_attempt,
+                )
+
+                return answer_result
+
+            except Exception as e:
+                err_str = str(e)
+                is_quota = "quota" in err_str.lower() or "resource_exhausted" in err_str.lower()
+
+                if is_quota and quota_attempt < MAX_QUOTA_RETRIES:
+                    import time
+                    logger.warning("quota_exceeded_retrying", attempt=quota_attempt + 1, wait_secs=35)
+                    time.sleep(35)
+                    continue
+
+                logger.error("llm_call_failed", error=err_str)
+                # Give a user-friendly message for quota errors
+                if is_quota:
+                    friendly = (
+                        "The AI model is temporarily rate-limited (Gemini free tier: 20 req/min). "
+                        "Please wait ~60 seconds and try again."
+                    )
+                else:
+                    friendly = f"Generation failed: {e}"
+
+                return CitedAnswer(
+                    answer_text=friendly,
+                    citations=[],
+                    confidence=0.0,
+                    reasoning=f"LLM call error: {e}",
+                )
+
+        # Should not reach here
+        return CitedAnswer(
+            answer_text="Generation failed after retries.",
+            citations=[],
+            confidence=0.0,
+            reasoning="Max quota retries exceeded.",
+        )

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import type { Citation } from "@/lib/types";
 
 interface CitationDrawerProps {
@@ -10,13 +10,8 @@ interface CitationDrawerProps {
 }
 
 export default function CitationDrawer({ citation, isOpen, onClose }: CitationDrawerProps) {
-  const drawerRef = useRef<HTMLDivElement>(null);
-
-  // Close on Escape key
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [onClose]);
@@ -30,161 +25,100 @@ export default function CitationDrawer({ citation, isOpen, onClose }: CitationDr
       {/* Backdrop */}
       <div
         onClick={onClose}
-        style={{
-          position: "fixed",
-          inset: 0,
-          background: "rgba(0,0,0,0.55)",
-          zIndex: 40,
-          opacity: isOpen ? 1 : 0,
-          pointerEvents: isOpen ? "auto" : "none",
-          transition: "opacity 250ms ease",
-        }}
+        className={`fixed inset-0 bg-background/80 backdrop-blur-sm z-50 transition-opacity duration-300 ${isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
       />
 
       {/* Drawer */}
       <div
-        ref={drawerRef}
-        style={{
-          position: "fixed",
-          top: 0,
-          right: 0,
-          width: 380,
-          height: "100vh",
-          background: "var(--bg-panel)",
-          borderLeft: "1px solid var(--border)",
-          zIndex: 50,
-          display: "flex",
-          flexDirection: "column",
-          transform: isOpen ? "translateX(0)" : "translateX(100%)",
-          transition: isOpen
-            ? "transform 280ms cubic-bezier(0.22,1,0.36,1)"
-            : "transform 220ms ease-in",
-          overflowY: "auto",
-        }}
+        className={`
+          fixed top-0 right-0 h-full w-full sm:w-[480px] bg-background border-l border-border z-50 shadow-2xl flex flex-col
+          transform transition-transform duration-300 ease-in-out
+          ${isOpen ? 'translate-x-0' : 'translate-x-full'}
+        `}
       >
         {citation && (
           <>
             {/* Header */}
-            <div
-              style={{
-                padding: "18px 20px 16px",
-                borderBottom: "1px solid var(--border)",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "flex-start",
-              }}
-            >
+            <div className="flex items-center justify-between p-6 border-b border-border bg-muted/20">
               <div>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: "0.95rem",
-                      fontWeight: 600,
-                      color: "var(--text-primary)",
-                    }}
-                  >
-                    {citation.ticker}
-                  </span>
-                  <span
-                    className="font-mono"
-                    style={{
-                      fontSize: "0.68rem",
-                      background: "var(--citation-bg)",
-                      color: "var(--citation-text)",
-                      padding: "2px 7px",
-                      borderRadius: 4,
-                      border: "1px solid rgba(147,197,253,0.2)",
-                    }}
-                  >
+                <h3 className="font-semibold text-lg text-foreground flex items-center gap-2">
+                  {citation.ticker}
+                  <span className="text-xs font-mono font-medium px-2 py-0.5 bg-primary/10 text-primary rounded-md">
                     {citation.filing_type}
                   </span>
-                </div>
-                <div
-                  style={{
-                    fontSize: "0.8rem",
-                    color: "var(--text-secondary)",
-                    maxWidth: 280,
-                  }}
-                >
-                  {citation.section}
-                </div>
-                <div
-                  className="font-mono"
-                  style={{ fontSize: "0.72rem", color: "var(--text-muted)", marginTop: 4 }}
-                >
-                  Page {citation.page}
-                </div>
+                </h3>
+                <p className="text-sm text-muted-foreground mt-1 line-clamp-1">
+                  {citation.section} {citation.page ? `— p. ${citation.page}` : ""}
+                </p>
               </div>
-
-              {/* Close button */}
+              
               <button
                 onClick={onClose}
-                style={{
-                  background: "none",
-                  border: "none",
-                  color: "var(--text-muted)",
-                  fontSize: "1.2rem",
-                  cursor: "pointer",
-                  padding: "0 4px",
-                  lineHeight: 1,
-                  transition: "color 150ms",
-                }}
-                onMouseEnter={(e) => ((e.target as HTMLElement).style.color = "var(--text-primary)")}
-                onMouseLeave={(e) => ((e.target as HTMLElement).style.color = "var(--text-muted)")}
+                className="p-2 -mr-2 rounded-full text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+                aria-label="Close"
               >
-                ×
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M18 6L6 18M6 6l12 12" />
+                </svg>
               </button>
             </div>
 
-            {/* Body — chunk text */}
-            <div style={{ padding: "20px", flex: 1 }}>
-              <div className="text-label" style={{ marginBottom: 12 }}>
-                Source Excerpt
+            {/* Body */}
+            <div className="flex-1 overflow-y-auto p-6 space-y-6">
+              
+              <div className="space-y-3">
+                <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Source Document Excerpt
+                </h4>
+                
+                <div className="relative">
+                  {/* Left quote border */}
+                  <div className="absolute left-0 top-0 bottom-0 w-1 bg-primary rounded-l-md" />
+                  
+                  <div className="pl-5 py-4 pr-4 bg-muted/30 rounded-r-xl rounded-l-sm border border-border/50 text-sm leading-relaxed text-foreground whitespace-pre-wrap">
+                    {citation.text}
+                  </div>
+                </div>
               </div>
-              <blockquote
-                style={{
-                  background: "var(--bg-elevated)",
-                  borderLeft: "3px solid var(--accent)",
-                  borderRadius: "0 6px 6px 0",
-                  padding: "14px 16px",
-                  margin: 0,
-                  fontSize: "0.875rem",
-                  lineHeight: 1.75,
-                  color: "var(--text-primary)",
-                  fontStyle: "normal",
-                  letterSpacing: "0.01em",
-                }}
-              >
-                &ldquo;{citation.text}&rdquo;
-              </blockquote>
+
+              {/* Metadata */}
+              <div className="flex gap-2">
+                {typeof (citation as any).relevance_score === "number" && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-medium bg-muted text-muted-foreground border border-border">
+                    Relevance: {(((citation as any).relevance_score as number) * 100).toFixed(0)}%
+                  </span>
+                )}
+                {citation.chunk_id && (
+                  <span className="inline-flex items-center px-2.5 py-1 rounded-md text-xs font-mono font-medium bg-muted text-muted-foreground border border-border">
+                    ID: {citation.chunk_id.slice(0, 8)}
+                  </span>
+                )}
+              </div>
+
             </div>
 
-            {/* Footer — EDGAR link */}
-            <div
-              style={{
-                padding: "14px 20px",
-                borderTop: "1px solid var(--border)",
-              }}
-            >
+            {/* Footer */}
+            <div className="p-6 border-t border-border bg-muted/10">
               <a
                 href={edgarUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: 6,
-                  fontSize: "0.78rem",
-                  color: "var(--accent)",
-                  textDecoration: "none",
-                  transition: "color 150ms",
-                }}
-                onMouseEnter={(e) => ((e.target as HTMLElement).style.color = "var(--accent-hover)")}
-                onMouseLeave={(e) => ((e.target as HTMLElement).style.color = "var(--accent)")}
+                className="flex items-center justify-between p-4 rounded-xl border border-border bg-background hover:bg-muted/50 transition-colors group"
               >
-                View original filing on SEC EDGAR
-                <span style={{ fontSize: "0.9rem" }}>→</span>
+                <div>
+                  <div className="font-medium text-foreground group-hover:text-primary transition-colors">
+                    View on SEC EDGAR
+                  </div>
+                  <div className="text-xs text-muted-foreground mt-0.5">
+                    Open the original source filing in a new tab.
+                  </div>
+                </div>
+                <div className="text-muted-foreground group-hover:text-primary transition-colors">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="7" y1="17" x2="17" y2="7"></line>
+                    <polyline points="7 7 17 7 17 17"></polyline>
+                  </svg>
+                </div>
               </a>
             </div>
           </>

@@ -65,6 +65,9 @@ def retrieve(
     Reciprocal Rank Fusion. Fetches 20-30 candidates to give
     the reranker enough signal to work with.
 
+    For summarize intent, uses broader multi-section retrieval
+    to cover all major parts of the filing.
+
     Args:
         state: Current graph state with 'query' field.
         hybrid_retriever: Initialized HybridRetriever instance.
@@ -76,21 +79,55 @@ def retrieve(
     query = state.get("query", "")
     metadata_filter = state.get("metadata_filter")
     step_count = state.get("step_count", 0)
+    query_intent = state.get("query_intent", "factual_extraction")
 
     try:
-        chunks = hybrid_retriever.retrieve(
-            query=query,
-            n_results=30,  # Oversample for reranker
-            where=metadata_filter,
-            use_multi_query=True,
-        )
+        if query_intent == "summarize":
+            # For summarization: fetch broadly across all major filing sections
+            # Use specific sub-queries that cover the full scope of a filing
+            summary_queries = [
+                "revenue net income earnings financial results",
+                "business operations products services segments",
+                "risk factors challenges uncertainties",
+                "management outlook guidance future plans",
+                "cash flow balance sheet assets liabilities",
+            ]
+            seen_ids: set = set()
+            all_chunks: list = []
 
-        logger.info(
-            "retrieval_complete",
-            query_preview=query[:80],
-            chunks_retrieved=len(chunks),
-            has_filter=metadata_filter is not None,
-        )
+            for sub_query in summary_queries:
+                sub_chunks = hybrid_retriever.retrieve(
+                    query=sub_query,
+                    n_results=15,
+                    where=metadata_filter,
+                    use_multi_query=False,  # Already using multiple queries manually
+                )
+                for chunk in sub_chunks:
+                    cid = chunk.get("chunk_id", "")
+                    if cid not in seen_ids:
+                        seen_ids.add(cid)
+                        all_chunks.append(chunk)
+
+            chunks = all_chunks
+            logger.info(
+                "summarize_retrieval_complete",
+                query_preview=query[:80],
+                chunks_retrieved=len(chunks),
+                sub_queries=len(summary_queries),
+            )
+        else:
+            chunks = hybrid_retriever.retrieve(
+                query=query,
+                n_results=30,  # Oversample for reranker
+                where=metadata_filter,
+                use_multi_query=True,
+            )
+            logger.info(
+                "retrieval_complete",
+                query_preview=query[:80],
+                chunks_retrieved=len(chunks),
+                has_filter=metadata_filter is not None,
+            )
 
         return {
             "retrieved_chunks": chunks,
@@ -98,6 +135,7 @@ def retrieve(
                 "num_candidates": len(chunks),
                 "filter_applied": metadata_filter,
                 "multi_query": True,
+                "intent": query_intent,
             },
             "step_count": step_count + 1,
         }
@@ -141,6 +179,7 @@ def rerank(
     query = state.get("query", "")
     chunks = state.get("retrieved_chunks", [])
     step_count = state.get("step_count", 0)
+    query_intent = state.get("query_intent", "factual_extraction")
 
     if not chunks:
         logger.warning("rerank_skipped_no_chunks", query_preview=query[:80])
@@ -149,11 +188,14 @@ def rerank(
             "step_count": step_count + 1,
         }
 
+    # Summarize queries need broader coverage → keep more chunks
+    top_k = 15 if query_intent == "summarize" else PIPELINE_RERANK_TOP_K
+
     try:
         reranked = reranker.rerank(
             query=query,
             candidates=chunks,
-            top_k=PIPELINE_RERANK_TOP_K,
+            top_k=top_k,
         )
 
         logger.info(
@@ -214,6 +256,7 @@ def generate(
     query = state.get("query", "")
     chunks = state.get("reranked_chunks", [])
     step_count = state.get("step_count", 0)
+    query_intent = state.get("query_intent", "factual_extraction")
 
     if not chunks:
         return {
@@ -232,6 +275,7 @@ def generate(
         cited_answer, enforcement_passed, errors = rag_generator.generate(
             query=query,
             context_chunks=chunks,
+            query_intent=query_intent,
         )
 
         # Convert Pydantic model to dict for graph state

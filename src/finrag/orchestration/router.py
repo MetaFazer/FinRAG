@@ -47,6 +47,19 @@ DECLINE_PATTERNS: list[re.Pattern] = [
     re.compile(r"\b(portfolio\s+(allocation|recommendation))\b", re.IGNORECASE),
 ]
 
+# Patterns indicating the user wants a structured overview / summary
+# of the entire filing, not a specific factual answer.
+# These get broader retrieval (more chunks, all sections) and a
+# summary-style generation prompt.
+SUMMARIZE_PATTERNS: list[re.Pattern] = [
+    re.compile(r"\b(summarize|summarise|summary|overview|brief|highlights?)\b", re.IGNORECASE),
+    re.compile(r"\b(key\s+(points|takeaways|findings|metrics|numbers|facts))\b", re.IGNORECASE),
+    re.compile(r"\b(what\s+(is|was|are|were)\s+.{0,20}\s+(about|cover|discuss|contain))\b", re.IGNORECASE),
+    re.compile(r"\b(overall\s+(performance|result|financials?|business))\b", re.IGNORECASE),
+    re.compile(r"\b(tell\s+me\s+(about|everything|all))\b", re.IGNORECASE),
+    re.compile(r"\b(main\s+(point|highlight|topic|finding|result))\b", re.IGNORECASE),
+]
+
 # Patterns indicating the query needs numerical computation after
 # retrieval, not just text generation. These queries require extracting
 # numbers from chunks and performing calculations or comparisons.
@@ -113,6 +126,18 @@ def route_query(state: GraphState) -> dict:
                 "route": "decline",
                 "route_confidence": 0.9,
                 "query_intent": "financial_advice",
+                "step_count": step_count + 1,
+            }
+
+    # Check summarize patterns — detected before calculate so broad
+    # queries like "summarize and compare" go to summarize path
+    for pattern in SUMMARIZE_PATTERNS:
+        if pattern.search(query):
+            logger.info("query_routed_summarize", query_preview=query[:80])
+            return {
+                "route": "retrieve",          # Same graph path — no new nodes needed
+                "route_confidence": 0.85,
+                "query_intent": "summarize",  # Signal to retrieve node to go broad
                 "step_count": step_count + 1,
             }
 

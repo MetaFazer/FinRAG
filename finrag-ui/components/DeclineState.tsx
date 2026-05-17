@@ -1,3 +1,5 @@
+"use client";
+
 interface DeclineStateProps {
   ticker: string;
   filingType: string;
@@ -7,139 +9,40 @@ interface DeclineStateProps {
 }
 
 export default function DeclineState({
-  ticker,
-  filingType,
-  period,
-  declineReason,
-  onReset,
+  ticker, filingType, period, declineReason, onReset,
 }: DeclineStateProps) {
   return (
-    <div
-      className="fade-in"
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        alignItems: "center",
-        justifyContent: "center",
-        height: "100%",
-        padding: "40px 48px",
-        textAlign: "center",
-      }}
-    >
-      <div
-        style={{
-          background: "var(--decline-bg)",
-          border: "1px solid var(--decline-border)",
-          borderRadius: 12,
-          padding: "36px 40px",
-          maxWidth: 520,
-          width: "100%",
-        }}
-      >
-        {/* Shield icon */}
-        <div style={{ marginBottom: 20 }}>
-          <svg
-            width="36"
-            height="36"
-            viewBox="0 0 24 24"
-            fill="none"
-            xmlns="http://www.w3.org/2000/svg"
-            style={{ margin: "0 auto", display: "block" }}
-          >
-            <path
-              d="M12 2L3 6v6c0 5.25 3.75 10.15 9 11.25C17.25 22.15 21 17.25 21 12V6l-9-4z"
-              stroke="#7f1d1d"
-              strokeWidth="1.5"
-              fill="rgba(127,29,29,0.15)"
-            />
-            <path d="M12 8v4M12 16h.01" stroke="var(--decline-text)" strokeWidth="1.5" strokeLinecap="round" />
+    <div className="w-full max-w-2xl animate-fade-in mx-auto">
+      <div className="border border-border bg-background shadow-sm rounded-2xl p-6 md:p-8 text-center space-y-6">
+        
+        <div className="mx-auto w-12 h-12 bg-muted rounded-full flex items-center justify-center text-muted-foreground">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+            <line x1="4" y1="4" x2="20" y2="20" />
           </svg>
         </div>
 
-        <h2
-          style={{
-            fontSize: "1.05rem",
-            fontWeight: 600,
-            color: "var(--decline-text)",
-            marginBottom: 12,
-          }}
-        >
-          No Sufficient Evidence Found
-        </h2>
-
-        <p
-          style={{
-            fontSize: "0.85rem",
-            color: "var(--text-secondary)",
-            lineHeight: 1.7,
-            marginBottom: declineReason ? 20 : 0,
-          }}
-        >
-          FinRAG reviewed the selected{" "}
-          <span className="font-mono" style={{ color: "var(--citation-text)", fontSize: "0.8rem" }}>
-            {ticker} {filingType}
-          </span>{" "}
-          filing for{" "}
-          <span className="font-mono" style={{ color: "var(--citation-text)", fontSize: "0.8rem" }}>
-            {period}
-          </span>{" "}
-          and could not find chunks that adequately support an answer to your question.
-        </p>
+        <div className="space-y-2">
+          <h3 className="text-xl font-semibold tracking-tight text-foreground">
+            Insufficient Evidence
+          </h3>
+          <p className="text-muted-foreground">
+            FinRAG could not find reliable evidence in the <strong>{ticker} {filingType} ({period})</strong> filing to answer this query.
+          </p>
+        </div>
 
         {declineReason && (
-          <blockquote
-            style={{
-              borderLeft: "2px solid var(--decline-border)",
-              paddingLeft: 14,
-              margin: "0 0 20px",
-              fontSize: "0.8rem",
-              color: "var(--decline-text)",
-              fontStyle: "italic",
-              textAlign: "left",
-            }}
-          >
+          <div className="bg-muted text-muted-foreground text-sm p-4 rounded-xl text-left border border-border">
             {declineReason}
-          </blockquote>
+          </div>
         )}
 
-        <div
-          style={{
-            borderTop: "1px solid var(--decline-border)",
-            paddingTop: 18,
-            marginTop: declineReason ? 0 : 20,
-          }}
-        >
-          <p
-            style={{
-              fontSize: "0.78rem",
-              color: "var(--text-muted)",
-              lineHeight: 1.65,
-              marginBottom: 18,
-            }}
-          >
-            This is by design. FinRAG is built to decline rather than generate unsupported answers.
-            Try rephrasing your question or selecting a different filing period.
-          </p>
+        <div className="pt-2">
           <button
             onClick={onReset}
-            style={{
-              background: "rgba(127,29,29,0.2)",
-              border: "1px solid var(--decline-border)",
-              borderRadius: 6,
-              color: "var(--decline-text)",
-              fontSize: "0.8rem",
-              padding: "8px 18px",
-              cursor: "pointer",
-              transition: "background 150ms",
-            }}
-            onMouseEnter={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.background = "rgba(127,29,29,0.35)")
-            }
-            onMouseLeave={(e) =>
-              ((e.currentTarget as HTMLButtonElement).style.background = "rgba(127,29,29,0.2)")
-            }
+            className="bg-primary text-primary-foreground hover:bg-primary/90 px-6 py-2.5 rounded-xl font-medium transition-colors shadow-sm"
           >
-            Try a different question
+            Try Another Query
           </button>
         </div>
       </div>

@@ -10,42 +10,10 @@ export default function CitationChip({ citation, onClick, index }: CitationChipP
   return (
     <button
       onClick={onClick}
-      className="font-mono"
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: 4,
-        fontSize: "0.68rem",
-        fontWeight: 500,
-        padding: "2px 7px",
-        borderRadius: 4,
-        background: "var(--citation-bg)",
-        color: "var(--citation-text)",
-        border: "1px solid rgba(147,197,253,0.2)",
-        cursor: "pointer",
-        verticalAlign: "middle",
-        margin: "0 2px",
-        transition: "background 150ms",
-        whiteSpace: "nowrap",
-      }}
-      onMouseEnter={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "#254d73";
-      }}
-      onMouseLeave={(e) => {
-        (e.currentTarget as HTMLButtonElement).style.background = "var(--citation-bg)";
-      }}
       title={`${citation.ticker} · ${citation.filing_type} · ${citation.section} · p.${citation.page}`}
+      className="inline-flex items-center justify-center relative -top-[0.2em] ml-1 px-1 py-0.5 rounded text-[10px] font-mono font-medium leading-none text-primary bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-colors"
     >
-      <span style={{ opacity: 0.6 }}>[{index}]</span>
-      <span>{citation.ticker}</span>
-      <span style={{ opacity: 0.5 }}>·</span>
-      <span>{citation.filing_type}</span>
-      <span style={{ opacity: 0.5 }}>·</span>
-      <span style={{ maxWidth: 80, overflow: "hidden", textOverflow: "ellipsis" }}>
-        {citation.section}
-      </span>
-      <span style={{ opacity: 0.5 }}>·</span>
-      <span>p.{citation.page}</span>
+      {index}
     </button>
   );
 }

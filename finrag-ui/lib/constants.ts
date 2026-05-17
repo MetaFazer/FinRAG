@@ -67,5 +67,5 @@ export const PIPELINE_STAGES: PipelineStage[] = [
 export const DEFAULT_FILTERS = {
   ticker: "AAPL",
   filing_type: "10-K",
-  fiscal_period: "FY2025",
+  fiscal_period: "",  // Populated dynamically from /available-filings
 };

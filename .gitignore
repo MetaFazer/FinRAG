@@ -44,3 +44,7 @@ RULES.md
 ROADMAP.md
 DEBT_LEDGER.md
 CONTRIBUTING.md
+.claude/
+data/chroma/
+data/chroma.sqlite3
+

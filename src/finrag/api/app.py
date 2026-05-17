@@ -138,6 +138,7 @@ async def lifespan(app: FastAPI):
                 reranker=reranker,
                 rag_generator=rag_generator,
             )
+            app.state.chroma_store = chroma_store  # Expose for /available-filings
             logger.info("rag_pipeline_initialized")
 
         except Exception as e:

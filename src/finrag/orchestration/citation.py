@@ -46,11 +46,12 @@ MIN_CITATIONS = 1
 
 # Minimum reranker score for the top chunk.
 # If the best chunk scores below this, context quality is too poor.
-# Note: ms-marco-MiniLM cross-encoder gives lower absolute scores on long-form
-# SEC legal/financial text than the web-search passages it was trained on.
-# 0.05 still filters clearly irrelevant results (negative log-odds) while
-# allowing legitimate risk-factor, MD&A, and financial statement passages through.
-DEFAULT_RELEVANCE_FLOOR = 0.05
+# Note: ms-marco-MiniLM cross-encoder was trained on MS MARCO web-search passages.
+# SEC legal/financial text naturally gets lower sigmoid scores (~0.03-0.08) than
+# web passages even when highly relevant. Setting this to 0.01 matches the
+# reranker's own min_relevance floor and prevents over-aggressive declining
+# on legitimate financial queries. Truly irrelevant results still score below 0.01.
+DEFAULT_RELEVANCE_FLOOR = 0.01
 
 
 # --------------------------------------------------------------------------- #

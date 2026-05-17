@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 
@@ -10,15 +10,21 @@ const inter = Inter({
 
 const ibmPlexMono = IBM_Plex_Mono({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
   variable: "--font-mono",
   display: "swap",
+  weight: ["400", "500", "600"],
 });
 
 export const metadata: Metadata = {
-  title: "FinRAG — SEC Filing Research",
-  description:
-    "Citation-enforced financial research assistant over SEC EDGAR filings. Every answer is grounded in evidence.",
+  title: "FinRAG — AI Financial Research",
+  description: "Citation-enforced financial research over SEC EDGAR 10-K, 10-Q, and 8-K filings.",
+};
+
+export const viewport: Viewport = {
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "white" },
+    { media: "(prefers-color-scheme: dark)", color: "#09090b" }
+  ],
 };
 
 export default function RootLayout({
@@ -27,8 +33,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${ibmPlexMono.variable}`}>
-      <body>{children}</body>
+    <html
+      lang="en"
+      className={`${inter.variable} ${ibmPlexMono.variable} antialiased`}
+      suppressHydrationWarning
+    >
+      <body className="min-h-screen bg-background font-sans text-foreground">
+        {children}
+      </body>
     </html>
   );
 }

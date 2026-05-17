@@ -26,6 +26,21 @@ export async function checkHealth(): Promise<boolean> {
   }
 }
 
+// Returns what ticker/form_type/filing_date combos actually exist in ChromaDB.
+// Shape: { available: { AAPL: { "10-K": ["2025-10-30"], "10-Q": ["2026-01-30"] } } }
+export async function getAvailableFilings(): Promise<Record<string, Record<string, string[]>>> {
+  try {
+    const res = await fetch("/api/available-filings", {
+      signal: AbortSignal.timeout(10000),
+    });
+    if (!res.ok) return {};
+    const data = await res.json();
+    return (data.available as Record<string, Record<string, string[]>>) || {};
+  } catch {
+    return {};
+  }
+}
+
 // ─── Stream Query ──────────────────────────────────────────────────────────
 
 interface StreamCallbacks {
@@ -59,11 +74,16 @@ function runLiveStream(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 120_000);
 
-  // Build metadata_filter from UI filters to match backend ChromaDB schema
+  // Build metadata_filter from UI filters to match backend ChromaDB schema.
+  // fiscal_period now stores the actual filing_date (YYYY-MM-DD) from the sidebar.
   const metadata_filter: Record<string, string> = {
     ticker: filters.ticker,
     form_type: filters.filing_type,
   };
+  // If a specific filing date is selected, narrow retrieval to that exact filing
+  if (filters.fiscal_period && /^\d{4}-\d{2}-\d{2}$/.test(filters.fiscal_period)) {
+    metadata_filter.filing_date = filters.fiscal_period;
+  }
 
   fetch(PROXY_ENDPOINT, {
     method: "POST",
@@ -191,11 +211,18 @@ function handleNamedEvent(
   }
 
   // Citation event — map backend shape to frontend Citation interface
+  // Deduplicate by chunk_id — multi-query expansion can retrieve the same chunk
+  // across multiple query variants, causing the same source to appear 2-3x.
   if (eventName === "citation") {
     const citation = mapBackendCitation(data);
     if (citation) {
-      accumulatedCitations.push(citation);
-      callbacks.onCitation(citation);
+      const alreadySeen = accumulatedCitations.some(
+        (c) => c.chunk_id === citation.chunk_id
+      );
+      if (!alreadySeen) {
+        accumulatedCitations.push(citation);
+        callbacks.onCitation(citation);
+      }
     }
     return;
   }
@@ -203,33 +230,41 @@ function handleNamedEvent(
   // Stream complete
   if (eventName === "done") {
     const route = (data.route as string) ?? "";
-    const isValid = data.is_valid as boolean;
+    const isDeclined = (data.is_declined as boolean) ?? false;
+    const isValid = (data.is_valid as boolean) ?? false;
+    const hasAnswer = getAnswer().trim().length > 0;
 
-    // Treat stub/blocked/decline routes as declined
+    // Decline on explicit signal, wrong route, or completely empty answer
     const declined =
-      !isValid ||
+      isDeclined ||
       route === "decline" ||
       route === "blocked" ||
-      route === "stub";
+      (route === "stub" && !hasAnswer) ||
+      (!hasAnswer && accumulatedCitations.length === 0); // Silent empty result → soft decline
 
     if (declined) {
-      const reason =
-        route === "blocked"
-          ? "This query was blocked by the content filter."
-          : route === "stub"
-          ? "Pipeline not initialized — no data loaded yet. Start the backend with FINRAG_INIT_PIPELINE=true."
-          : "Insufficient evidence found in the selected filing.";
+      let reason: string;
+      if (route === "blocked") {
+        reason = "This query was blocked by the content filter.";
+      } else if (route === "stub") {
+        reason = "Pipeline not initialized — no data loaded yet. Start the backend with FINRAG_INIT_PIPELINE=true.";
+      } else if (route === "decline") {
+        reason = "This question is outside the scope of SEC filing research (e.g. investment advice, stock predictions). Try asking about specific financial figures, risk factors, or disclosures from the filing.";
+      } else if (!hasAnswer) {
+        reason = "The selected filing doesn't appear to contain information relevant to your question. This is common for 8-K filings that cover a specific event (e.g. a debt issuance) rather than financial results. Try selecting a different filing date or filing type.";
+      } else {
+        reason = "No relevant data found for this filing. Try a different company, filing type, or date.";
+      }
       callbacks.onDecline(reason);
     }
+
 
     callbacks.onComplete({
       answer: getAnswer(),
       citations: accumulatedCitations,
       confidence: isValid ? 0.85 : 0.0,
       declined,
-      decline_reason: declined
-        ? "See decline reason above."
-        : null,
+      decline_reason: declined ? "See decline reason above." : null,
     });
     return;
   }
@@ -241,17 +276,25 @@ function handleNamedEvent(
 }
 
 // Map backend CitationResponse fields → frontend Citation interface
+// Backend sends: chunk_id, filing_reference, section, text_excerpt, relevance_score
 function mapBackendCitation(raw: Record<string, unknown>): Citation | null {
   const chunkId = (raw.chunk_id as string) ?? "";
   const filingRef = (raw.filing_reference as string) ?? "";
   const section = (raw.section as string) ?? "";
   const page = (raw.page as number) ?? 0;
-  const text = (raw.text as string) ?? (raw.chunk_text as string) ?? "";
 
-  // Parse "AAPL 10-K" style filing_reference into ticker + filing_type
-  const parts = filingRef.trim().split(/\s+/);
-  const ticker = parts[0] || "N/A";
-  const filingType = parts[1] || "N/A";
+  // Backend field is `text_excerpt` — also try `text` and `chunk_text` as fallbacks
+  const text =
+    (raw.text_excerpt as string) ??
+    (raw.text as string) ??
+    (raw.chunk_text as string) ??
+    "";
+
+  // Parse "AAPL 10-K, item_8..." style filing_reference into ticker + filing_type
+  // Format: "TICKER FILING_TYPE, section_name"
+  const refParts = filingRef.trim().split(",")[0].trim().split(/\s+/);
+  const ticker = refParts[0] || "N/A";
+  const filingType = refParts[1] || "N/A";
 
   if (!chunkId && !filingRef) return null;
 
@@ -261,7 +304,9 @@ function mapBackendCitation(raw: Record<string, unknown>): Citation | null {
     filing_type: filingType,
     section,
     page,
-    text: text || `Source: ${filingRef} — ${section}`,
+    // Provide a useful fallback so the drawer always shows something meaningful
+    text: text.trim() ||
+      `This excerpt is from the ${section || "filing"} section of the ${filingRef} document. Open the original filing on SEC EDGAR to view the full text.`,
   };
 }
 
