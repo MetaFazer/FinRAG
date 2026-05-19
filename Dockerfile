@@ -36,4 +36,5 @@ ENV PATH="/home/user/.local/bin:${PATH}"
 EXPOSE 7860
 
 # Run the FastAPI app using the factory pattern
-CMD ["uvicorn", "finrag.api.app:app", "--host", "0.0.0.0", "--port", "7860", "--factory"]
+CMD ["uvicorn", "finrag.api.app:create_app", "--host", "0.0.0.0", "--port", "7860", "--factory"]
+
