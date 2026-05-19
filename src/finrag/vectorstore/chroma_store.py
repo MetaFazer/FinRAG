@@ -17,6 +17,10 @@ Debt: DAY-3-001 — Using all-MiniLM-L6-v2 (384-dim). Upgrade to
 
 import os
 from pathlib import Path
+from dotenv import load_dotenv
+
+load_dotenv()
+
 
 import chromadb
 import structlog
@@ -84,18 +88,29 @@ class ChromaStore:
         chroma_host = os.getenv("CHROMA_HOST")
         chroma_api_key = os.getenv("CHROMA_API_KEY")
 
-        if chroma_host and chroma_api_key:
+        if chroma_api_key:
             # Cloud deployment — ChromaDB Cloud (deploy branch)
-            self._client = chromadb.HttpClient(
-                host=chroma_host,
-                ssl=True,
-                headers={"x-chroma-token": chroma_api_key},
-            )
+            client_kwargs = {
+                "api_key": chroma_api_key,
+            }
+            if chroma_host:
+                client_kwargs["cloud_host"] = chroma_host
+            
+            # Allow optional tenant and database overrides if defined in env
+            tenant_env = os.getenv("CHROMA_TENANT")
+            database_env = os.getenv("CHROMA_DATABASE")
+            if tenant_env:
+                client_kwargs["tenant"] = tenant_env
+            if database_env:
+                client_kwargs["database"] = database_env
+
+            self._client = chromadb.CloudClient(**client_kwargs)
             logger.info(
                 "chroma_cloud_client_initialized",
-                host=chroma_host,
+                host=chroma_host or "api.trychroma.com",
             )
         else:
+
             # Local development — PersistentClient (main branch)
             self._persist_dir.mkdir(parents=True, exist_ok=True)
             self._client = chromadb.PersistentClient(
@@ -348,7 +363,7 @@ class ChromaStore:
         # Sample to get unique tickers if collection is non-empty
         if count > 0:
             sample = self._collection.get(
-                limit=min(count, 1000),
+                limit=min(count, 250),
                 include=["metadatas"],
             )
             if sample["metadatas"]:
