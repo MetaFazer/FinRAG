@@ -9,9 +9,11 @@ ENV PYTHONUNBUFFERED=1 \
 RUN useradd -m -u 1000 user
 WORKDIR /app
 
-# Install system dependencies (build-essential needed for some C-extensions like rank-bm25)
+# Install system dependencies (build-essential, g++, python3-dev needed to compile C-extensions like chromadb)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
+    g++ \
+    python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy project files and set ownership to our non-root user
@@ -20,8 +22,10 @@ COPY --chown=user:user . /app
 # Switch to the non-root user
 USER user
 
-# Install the package and dependencies
-RUN pip install --no-cache-dir --user .
+# Pre-upgrade build system tools and install package dependencies
+RUN pip install --no-cache-dir --user --upgrade pip setuptools wheel && \
+    pip install --no-cache-dir --user .
+
 
 # Ensure the local bin is in PATH so uvicorn can be found
 ENV PATH="/home/user/.local/bin:${PATH}"
