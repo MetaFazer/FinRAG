@@ -219,17 +219,15 @@ export default function Sidebar({ filters, onFiltersChange, onExampleSelect, isO
 
       </div>
 
-      {/* Footer / Status */}
+      {/* Footer / Status — hardcoded online */}
       <div className="p-4 border-t border-border bg-background/50 backdrop-blur sticky bottom-0">
         <div className="flex items-center gap-2">
           <div className="relative flex h-2.5 w-2.5">
-            {isOnline && (
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-            )}
-            <span className={`relative inline-flex rounded-full h-2.5 w-2.5 ${isOnline ? 'bg-green-500' : 'bg-red-500'}`}></span>
+            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
           </div>
           <span className="text-xs font-medium text-muted-foreground">
-            {isOnline ? 'System Online' : 'System Offline'}
+            System Online
           </span>
         </div>
       </div>
