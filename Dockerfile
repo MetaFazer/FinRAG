@@ -8,6 +8,8 @@ ENV PYTHONUNBUFFERED=1 \
 # Create a non-root user (Hugging Face requires user 1000 for security)
 RUN useradd -m -u 1000 user
 WORKDIR /app
+RUN chown user:user /app
+
 
 # Install system dependencies (build-essential, g++, python3-dev needed to compile C-extensions like chromadb)
 RUN apt-get update && apt-get install -y --no-install-recommends \
