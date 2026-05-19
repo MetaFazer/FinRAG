@@ -11,12 +11,14 @@ WORKDIR /app
 RUN chown user:user /app
 
 
-# Install system dependencies (build-essential, g++, python3-dev needed to compile C-extensions like chromadb)
+# Install system dependencies (build-essential, g++, python3-dev needed to compile C-extensions like chromadb, curl for REST API requests)
 RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     g++ \
     python3-dev \
+    curl \
     && rm -rf /var/lib/apt/lists/*
+
 
 # Copy project files and set ownership to our non-root user
 COPY --chown=user:user . /app
