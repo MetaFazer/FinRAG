@@ -516,12 +516,24 @@ async def get_available_filings(request: Request) -> dict:
         return {"available": {}, "total_chunks": 0}
 
     try:
-        # Sample a large number of chunks to get all unique combinations
-        result = chroma_store._collection.get(
-            include=["metadatas"],
-            limit=5000,
-        )
-        metadatas = result.get("metadatas", [])
+        # Sample chunks in batches to respect the Chroma Cloud Get quota limit (max 300)
+        metadatas = []
+        offset = 0
+        limit = 250
+        while True:
+            batch = chroma_store._collection.get(
+                include=["metadatas"],
+                limit=limit,
+                offset=offset,
+            )
+            batch_metadatas = batch.get("metadatas", [])
+            if not batch_metadatas:
+                break
+            metadatas.extend(batch_metadatas)
+            offset += limit
+            # Safety breakout to avoid infinite loops if database is massive
+            if offset > 10000:
+                break
 
         # Build available filings map: {ticker: {form_type: set(filing_dates)}}
         available: dict = {}
